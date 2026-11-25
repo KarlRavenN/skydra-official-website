@@ -12,6 +12,14 @@ export interface PosterImageProps {
   placeholderText?: string;
   sizes?: string;
   priority?: boolean;
+  /** When false, renders at the image's natural aspect ratio (w-full h-auto) instead of filling a fixed box. */
+  fill?: boolean;
+  /** Intrinsic width hint when fill is false. */
+  width?: number;
+  /** Intrinsic height hint when fill is false. */
+  height?: number;
+  /** Image optimization quality (1-100). */
+  quality?: number;
   className?: string;
   /** Classes for the placeholder box (defaults match the old inline placeholders). */
   placeholderClassName?: string;
@@ -29,6 +37,10 @@ export function PosterImage({
   placeholderText = "SKYDRA POSTER",
   sizes,
   priority,
+  fill = true,
+  width = 1200,
+  height = 1500,
+  quality,
   className,
   placeholderClassName,
 }: PosterImageProps) {
@@ -38,7 +50,8 @@ export function PosterImage({
     return (
       <div
         className={cn(
-          "flex h-full w-full items-center justify-center bg-zinc-900 text-zinc-600 font-black text-xl tracking-widest uppercase text-center px-2",
+          "flex w-full items-center justify-center bg-zinc-900 text-zinc-600 font-black text-xl tracking-widest uppercase text-center px-2",
+          fill ? "h-full" : "aspect-[4/5]",
           placeholderClassName
         )}
         role="img"
@@ -49,11 +62,28 @@ export function PosterImage({
     );
   }
 
+  if (!fill) {
+    return (
+      <Image
+        src={src}
+        alt={alt}
+        width={width}
+        height={height}
+        quality={quality}
+        priority={priority}
+        sizes={sizes}
+        className={cn("block h-auto w-full", className)}
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+
   return (
     <Image
       src={src}
       alt={alt}
       fill
+      quality={quality}
       priority={priority}
       sizes={sizes}
       className={cn("object-cover", className)}
