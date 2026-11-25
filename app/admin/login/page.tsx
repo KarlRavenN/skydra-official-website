@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, Suspense } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -36,9 +36,20 @@ function LoginForm() {
       return;
     }
 
-    router.push(redirectTo);
-    router.refresh();
+    try {
+      router.push(redirectTo);
+      router.refresh();
+    } finally {
+      // The login page can remain mounted if the guard redirects back here
+      // (?error=forbidden), so the spinner must always be released.
+      setLoading(false);
+    }
   };
+
+  // Reset a stuck spinner whenever the guard sends us back with an error.
+  useEffect(() => {
+    if (forbidden) setLoading(false);
+  }, [forbidden]);
 
   return (
     <Card className="border-border bg-card shadow-2xl">

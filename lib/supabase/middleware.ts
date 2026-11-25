@@ -60,11 +60,15 @@ export async function updateSession(request: NextRequest) {
 
   let isAdmin = false;
   if (user) {
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("admin_profiles")
       .select("id")
       .eq("id", user.id)
       .maybeSingle();
+    if (profileError) {
+      // Never treat a failed lookup (e.g. RLS error) as "not an admin" silently.
+      console.error("[auth] admin_profiles lookup failed:", profileError.message);
+    }
     isAdmin = !!profile;
   }
 
