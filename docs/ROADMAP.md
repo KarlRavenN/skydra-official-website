@@ -1,25 +1,25 @@
 # Roadmap
 
 ## Phase 1
-Project Setup
+Project Setup (done)
 
 ## Phase 2
-Homepage
+Homepage (done)
 
 ## Phase 3
-Events
+Events (done)
 
 ## Phase 4
-Registration
+Registration (done, v1.1 aligned with the plan)
 
 ## Phase 5
-Digital Tickets
+Digital Tickets (done)
 
 ## Phase 6
-Admin Dashboard
+Admin Dashboard (done, plus Battles management)
 
 ## Phase 7
-Polish
+Polish (visual polish, SEO, accessibility)
 
 ## Future
 
