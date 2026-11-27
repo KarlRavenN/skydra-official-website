@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const POSTER_BUCKET = "posters";
+export const PAYMENT_SCREENSHOT_BUCKET = "payment-screenshots";
 export const POSTER_MAX_BYTES = 8 * 1024 * 1024; // 8 MB
 export const POSTER_MIME_TO_EXT: Record<string, string> = {
   "image/jpeg": "jpg",

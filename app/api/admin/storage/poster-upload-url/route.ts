@@ -21,6 +21,7 @@ const bodySchema = z.object({
     .int()
     .positive("The file is empty")
     .max(POSTER_MAX_BYTES, "Image is too large. Maximum size is 8 MB"),
+  folder: z.enum(["events", "gcash-qr"]).optional().default("events"),
 });
 
 export async function POST(request: NextRequest) {
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) return validationErrorResponse(parsed.error);
 
     const ext = POSTER_MIME_TO_EXT[parsed.data.contentType];
-    const path = `events/${crypto.randomUUID()}.${ext}`;
+    const path = `${parsed.data.folder}/${crypto.randomUUID()}.${ext}`;
 
     const admin = createAdminClient();
     const { data, error } = await admin.storage.from(POSTER_BUCKET).createSignedUploadUrl(path);

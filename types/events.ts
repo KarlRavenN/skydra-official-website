@@ -39,6 +39,9 @@ export interface EventFormData {
   venue_address: string;
   google_maps_url: string;
   ticket_price: number;
+  gcash_qr_url: string;
+  gcash_account_name: string;
+  gcash_number: string;
   capacity: number;
   status: EventStatus;
   registration_status: RegistrationStatus;
@@ -94,6 +97,23 @@ export const eventFormSchema = z.object({
   venue_address: z.string().trim().min(2, "Venue address is required").max(300),
   google_maps_url: optionalHttpUrl,
   ticket_price: z.coerce.number().min(0, "Price cannot be negative").max(1_000_000),
+  gcash_qr_url: optionalHttpUrl,
+  gcash_account_name: z
+    .string()
+    .trim()
+    .max(120, "GCash account name is too long")
+    .nullish()
+    .transform((v) => v || null),
+  gcash_number: z
+    .string()
+    .trim()
+    .max(20, "GCash number is too long")
+    .nullish()
+    .transform((v) => v || null)
+    .refine(
+      (v) => v === null || /^09\d{9}$/.test(v),
+      "GCash number must start with 09 and be exactly 11 digits"
+    ),
   capacity: z.coerce.number().int().min(1, "Capacity must be at least 1").max(100_000),
   status: z.enum(["draft", "published", "live", "past", "cancelled"]),
   registration_status: z.enum(["open", "closed", "paused"]),

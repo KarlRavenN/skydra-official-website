@@ -156,6 +156,10 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
               <EventRegistrationModal
                 eventId={event.id}
                 eventTitle={event.title}
+                ticketPrice={Number(event.ticket_price)}
+                gcashQrUrl={event.gcash_qr_url}
+                gcashAccountName={event.gcash_account_name}
+                gcashNumber={event.gcash_number}
                 isOpen={false}
                 disabled={!isRegistrationOpen}
                 disabledReason={

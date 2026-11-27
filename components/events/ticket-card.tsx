@@ -83,13 +83,23 @@ export function TicketCard({ ticket }: TicketCardProps) {
             <span className="text-muted-foreground uppercase font-bold tracking-wider">Ticket Status</span>
             <Badge
               variant={
-                ticket.status === "checked_in" ? "success" : ticket.status === "cancelled" ? "danger" : "default"
+                ticket.status === "checked_in"
+                  ? "success"
+                  : ticket.status === "cancelled" || ticket.paymentStatus === "rejected"
+                  ? "danger"
+                  : ticket.paymentStatus === "pending_verification" || ticket.status === "pending"
+                  ? "warning"
+                  : "default"
               }
             >
               {ticket.status === "checked_in"
                 ? "CHECKED IN"
+                : ticket.paymentStatus === "rejected"
+                ? "PAYMENT REJECTED"
                 : ticket.status === "cancelled"
                 ? "CANCELLED"
+                : ticket.paymentStatus === "pending_verification" || ticket.status === "pending"
+                ? "PENDING VERIFICATION"
                 : "CONFIRMED"}
             </Badge>
           </div>

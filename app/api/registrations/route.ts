@@ -16,7 +16,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ success: true, ticket: result.ticket }, { status: 201 });
+    return NextResponse.json(
+      {
+        success: true,
+        requiresPayment: result.requiresPayment ?? false,
+        registrationId: result.registrationId,
+        ticketCode: result.ticketCode,
+        ticket: result.ticket,
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error("API error in POST /api/registrations:", error);
     return NextResponse.json(

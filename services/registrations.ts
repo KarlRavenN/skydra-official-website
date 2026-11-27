@@ -1,8 +1,11 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateTicketCode, generateTicketQRCode, isWellFormedTicketCode } from "@/lib/utils/ticket";
 import { toCsv, sanitizeSearchTerm } from "@/lib/utils/csv";
+import { verifyEmailDomainServer } from "@/lib/utils/email-mx";
+import { EmailService } from "@/services/email";
 import {
   registrationFormSchema,
+  paymentSubmissionSchema,
   DigitalTicketPayload,
   RegistrationFieldErrors,
   RegistrationFilters,
@@ -14,27 +17,38 @@ const ADMIN_SELECT = `
   id,
   event_id,
   full_name,
+  email,
   facebook_profile,
   age,
   phone_number,
-  barangay,
-  city,
-  emergency_contact_name,
-  emergency_contact_number,
   house_rules_accepted,
   privacy_accepted,
   consent_at,
   ticket_code,
   status,
+  payment_status,
+  payment_reference,
+  payment_screenshot_url,
+  payment_submitted_at,
+  payment_reviewed_at,
+  payment_rejection_reason,
   checked_in_at,
   created_at,
-  event:events(title)
+  event:events(title, ticket_price)
 `;
 
-export type AdminRegistrationRow = RegistrationRow & { event_title: string };
+export type AdminRegistrationRow = RegistrationRow & {
+  event_title: string;
+  event_ticket_price: number;
+};
 
 async function buildTicket(
-  registration: { ticket_code: string; full_name: string; status: RegistrationRow["status"] },
+  registration: {
+    ticket_code: string;
+    full_name: string;
+    status: RegistrationRow["status"];
+    payment_status?: RegistrationRow["payment_status"];
+  },
   event: { title: string; event_date: string; venue_name: string; venue_address: string }
 ): Promise<DigitalTicketPayload> {
   const verificationUrl = `${env.NEXT_PUBLIC_SITE_URL}/tickets/${registration.ticket_code}`;
@@ -48,6 +62,7 @@ async function buildTicket(
     venueName: event.venue_name,
     venueAddress: event.venue_address,
     status: registration.status,
+    paymentStatus: registration.payment_status,
     qrCodeDataUrl,
   };
 }
@@ -59,11 +74,16 @@ async function buildTicket(
  */
 export const RegistrationService = {
   /**
-   * Registers a guest for an event: validates input, verifies event state,
-   * capacity and duplicates, creates the registration and issues a digital ticket.
+   * Registers a guest for an event: validates input & email MX domain, verifies
+   * event state, capacity and duplicates, creates the registration, and either:
+   * - Free ticket: confirms immediately, issues digital ticket, invokes placeholder EmailService.
+   * - Paid ticket: creates pending_verification registration and returns registrationId for payment proof.
    */
   async registerAttendee(rawInput: unknown): Promise<{
     success: boolean;
+    requiresPayment?: boolean;
+    registrationId?: string;
+    ticketCode?: string;
     ticket?: DigitalTicketPayload;
     error?: string;
     fieldErrors?: RegistrationFieldErrors;
@@ -78,12 +98,25 @@ export const RegistrationService = {
       return { success: false, error: "Please fix the highlighted fields.", fieldErrors };
     }
     const input = parseResult.data;
+
+    // Server-side MX / domain check
+    const emailCheck = await verifyEmailDomainServer(input.email);
+    if (!emailCheck.valid) {
+      return {
+        success: false,
+        error: "Please fix the highlighted fields.",
+        fieldErrors: { email: emailCheck.error || "Please enter a valid email address" },
+      };
+    }
+
     const admin = createAdminClient();
 
     // 1. Event state
     const { data: event, error: eventError } = await admin
       .from("events")
-      .select("id, title, event_date, venue_name, venue_address, capacity, status, registration_status")
+      .select(
+        "id, title, event_date, venue_name, venue_address, ticket_price, capacity, status, registration_status"
+      )
       .eq("id", input.eventId)
       .single();
 
@@ -125,27 +158,27 @@ export const RegistrationService = {
       return { success: false, error: "Event capacity has been reached. Registrations are now full." };
     }
 
-    // 4. Insert registration with an unguessable ticket code
+    const isPaidEvent = Number(event.ticket_price) > 0;
     const ticketCode = generateTicketCode();
+
+    // 4. Insert registration with an unguessable ticket code
     const { data: registration, error: insertError } = await admin
       .from("registrations")
       .insert({
         event_id: input.eventId,
         full_name: input.fullName,
+        email: input.email,
         facebook_profile: input.facebookProfile,
         age: input.age,
         phone_number: input.phoneNumber,
-        barangay: input.barangay,
-        city: input.city,
-        emergency_contact_name: input.emergencyContactName,
-        emergency_contact_number: input.emergencyContactNumber,
         house_rules_accepted: true,
         privacy_accepted: true,
         consent_at: new Date().toISOString(),
         ticket_code: ticketCode,
-        status: "confirmed",
+        status: isPaidEvent ? "pending" : "confirmed",
+        payment_status: isPaidEvent ? "pending_verification" : "free",
       })
-      .select("ticket_code, full_name, status")
+      .select("id, ticket_code, full_name, status, payment_status")
       .single();
 
     if (insertError || !registration) {
@@ -162,8 +195,170 @@ export const RegistrationService = {
       return { success: false, error: "Failed to process registration. Please try again." };
     }
 
+    if (isPaidEvent) {
+      return {
+        success: true,
+        requiresPayment: true,
+        registrationId: registration.id,
+        ticketCode: registration.ticket_code,
+      };
+    }
+
     const ticket = await buildTicket(registration, event);
-    return { success: true, ticket };
+    const ticketUrl = `${env.NEXT_PUBLIC_SITE_URL}/tickets/${registration.ticket_code}`;
+
+    // Automatically invoke placeholder Email Service for FREE tickets
+    await EmailService.sendFreeTicketEmail(input.email, {
+      attendeeName: registration.full_name,
+      eventTitle: event.title,
+      eventDate: event.event_date,
+      venueName: event.venue_name,
+      venueAddress: event.venue_address,
+      ticketCode: registration.ticket_code,
+      ticketUrl,
+    });
+
+    return { success: true, requiresPayment: false, ticket };
+  },
+
+  /**
+   * Attaches GCash payment proof (reference number + screenshot URL) to a pending paid registration
+   * and triggers the placeholder "Payment Received" email.
+   */
+  async submitPaymentProof(rawInput: unknown): Promise<{ success: boolean; error?: string }> {
+    const parsed = paymentSubmissionSchema.safeParse(rawInput);
+    if (!parsed.success) {
+      return {
+        success: false,
+        error: parsed.error.issues[0]?.message || "Invalid payment submission details.",
+      };
+    }
+    const { registrationId, paymentReference, paymentScreenshotUrl } = parsed.data;
+    const admin = createAdminClient();
+
+    const { data: existing, error: fetchError } = await admin
+      .from("registrations")
+      .select("id, full_name, email, status, payment_status, event:events(title, ticket_price)")
+      .eq("id", registrationId)
+      .single();
+
+    if (fetchError || !existing) {
+      return { success: false, error: "Registration record not found." };
+    }
+    if (existing.payment_status === "approved" || existing.status === "confirmed") {
+      return { success: false, error: "This registration has already been approved." };
+    }
+    if (existing.status === "cancelled") {
+      return { success: false, error: "This registration has been cancelled." };
+    }
+
+    const { error: updateError } = await admin
+      .from("registrations")
+      .update({
+        payment_status: "pending_verification",
+        payment_reference: paymentReference,
+        payment_screenshot_url: paymentScreenshotUrl,
+        payment_submitted_at: new Date().toISOString(),
+        payment_rejection_reason: null,
+      })
+      .eq("id", registrationId);
+
+    if (updateError) {
+      console.error("Failed to update payment proof:", updateError);
+      return { success: false, error: "Failed to save payment submission. Please try again." };
+    }
+
+    const eventInfo = existing.event as unknown as { title: string; ticket_price: number } | null;
+
+    await EmailService.sendPaymentReceivedEmail(existing.email, {
+      attendeeName: existing.full_name,
+      eventTitle: eventInfo?.title || "SKYDRA Event",
+      referenceNumber: paymentReference,
+      amount: Number(eventInfo?.ticket_price ?? 0),
+    });
+
+    return { success: true };
+  },
+
+  /**
+   * Admin: Approves or rejects a paid registration's payment proof.
+   * On approval, confirms the registration and sends the placeholder Approval Email.
+   */
+  async reviewPayment(
+    registrationId: string,
+    action: "approve" | "reject",
+    reason?: string
+  ): Promise<{ success: boolean; error?: string }> {
+    const admin = createAdminClient();
+
+    const { data: existing, error: fetchError } = await admin
+      .from("registrations")
+      .select(
+        "id, full_name, email, ticket_code, status, payment_status, event:events(title, event_date, venue_name, venue_address)"
+      )
+      .eq("id", registrationId)
+      .single();
+
+    if (fetchError || !existing) {
+      return { success: false, error: "Registration not found." };
+    }
+
+    const now = new Date().toISOString();
+
+    if (action === "approve") {
+      const { error: updateError } = await admin
+        .from("registrations")
+        .update({
+          payment_status: "approved",
+          status: existing.status === "checked_in" ? "checked_in" : "confirmed",
+          payment_reviewed_at: now,
+          payment_rejection_reason: null,
+        })
+        .eq("id", registrationId);
+
+      if (updateError) {
+        return { success: false, error: updateError.message };
+      }
+
+      const eventInfo = existing.event as unknown as {
+        title: string;
+        event_date: string;
+        venue_name: string;
+        venue_address: string;
+      } | null;
+
+      if (eventInfo) {
+        const ticketUrl = `${env.NEXT_PUBLIC_SITE_URL}/tickets/${existing.ticket_code}`;
+        await EmailService.sendTicketApprovedEmail(existing.email, {
+          attendeeName: existing.full_name,
+          eventTitle: eventInfo.title,
+          eventDate: eventInfo.event_date,
+          venueName: eventInfo.venue_name,
+          venueAddress: eventInfo.venue_address,
+          ticketCode: existing.ticket_code,
+          ticketUrl,
+        });
+      }
+
+      return { success: true };
+    }
+
+    // Reject
+    const { error: rejectError } = await admin
+      .from("registrations")
+      .update({
+        payment_status: "rejected",
+        status: "cancelled",
+        payment_reviewed_at: now,
+        payment_rejection_reason: reason?.trim() || null,
+      })
+      .eq("id", registrationId);
+
+    if (rejectError) {
+      return { success: false, error: rejectError.message };
+    }
+
+    return { success: true };
   },
 
   /**
@@ -179,6 +374,7 @@ export const RegistrationService = {
         ticket_code,
         full_name,
         status,
+        payment_status,
         event:events(title, event_date, venue_name, venue_address)
       `)
       .eq("ticket_code", ticketCode)
@@ -197,21 +393,27 @@ export const RegistrationService = {
   },
 
   /**
-   * Admin: Queries registrations with search, event and status filters.
+   * Admin: Queries registrations with search, event, status, and payment status filters.
    */
   async getRegistrationsAdmin(params?: RegistrationFilters): Promise<AdminRegistrationRow[]> {
     const admin = createAdminClient();
 
-    let query = admin.from("registrations").select(ADMIN_SELECT).order("created_at", { ascending: false });
+    let query = admin
+      .from("registrations")
+      .select(ADMIN_SELECT)
+      .order("created_at", { ascending: false });
 
     if (params?.eventId) query = query.eq("event_id", params.eventId);
     if (params?.status && params.status !== "all") query = query.eq("status", params.status);
+    if (params?.paymentStatus && params.paymentStatus !== "all") {
+      query = query.eq("payment_status", params.paymentStatus);
+    }
 
     const term = params?.search ? sanitizeSearchTerm(params.search) : "";
     if (term) {
       const s = `%${term}%`;
       query = query.or(
-        `full_name.ilike.${s},phone_number.ilike.${s},ticket_code.ilike.${s},barangay.ilike.${s}`
+        `full_name.ilike.${s},email.ilike.${s},phone_number.ilike.${s},ticket_code.ilike.${s},payment_reference.ilike.${s}`
       );
     }
 
@@ -223,7 +425,10 @@ export const RegistrationService = {
 
     return ((data as any[]) || []).map((r) => ({
       ...r,
-      event_title: (r.event as unknown as { title: string })?.title || "Unknown Event",
+      event_title: (r.event as unknown as { title: string; ticket_price?: number })?.title || "Unknown Event",
+      event_ticket_price: Number(
+        (r.event as unknown as { title: string; ticket_price?: number })?.ticket_price ?? 0
+      ),
     }));
   },
 
@@ -235,7 +440,7 @@ export const RegistrationService = {
 
     const { data: registration, error: findError } = await admin
       .from("registrations")
-      .select("id, full_name, status, checked_in_at")
+      .select("id, full_name, status, payment_status, checked_in_at")
       .eq("ticket_code", ticketCode)
       .maybeSingle();
 
@@ -248,8 +453,14 @@ export const RegistrationService = {
         message: `Already checked in at ${new Date(registration.checked_in_at!).toLocaleTimeString("en-PH", { timeZone: "Asia/Manila" })}`,
       };
     }
-    if (registration.status === "cancelled") {
-      return { success: false, message: "Ticket is VOID or CANCELLED." };
+    if (registration.status === "cancelled" || registration.payment_status === "rejected") {
+      return { success: false, message: "Ticket is VOID, REJECTED, or CANCELLED." };
+    }
+    if (registration.payment_status === "pending_verification") {
+      return {
+        success: false,
+        message: "Payment is still pending staff verification. Approve payment before check-in.",
+      };
     }
 
     const { error: updateError } = await admin
@@ -282,13 +493,15 @@ export const RegistrationService = {
       "Event Title",
       "Ticket Code",
       "Full Name",
+      "Email",
       "Facebook Profile",
       "Age",
       "Contact Number",
-      "Barangay",
-      "City",
-      "Emergency Contact",
-      "Emergency Contact Number",
+      "Payment Status",
+      "Payment Reference",
+      "Payment Screenshot URL",
+      "Payment Submitted At",
+      "Payment Reviewed At",
       "House Rules Accepted",
       "Privacy Accepted",
       "Consent At",
@@ -302,13 +515,15 @@ export const RegistrationService = {
       r.event_title,
       r.ticket_code,
       r.full_name,
+      r.email,
       r.facebook_profile,
       r.age,
       r.phone_number,
-      r.barangay,
-      r.city,
-      r.emergency_contact_name,
-      r.emergency_contact_number,
+      r.payment_status,
+      r.payment_reference,
+      r.payment_screenshot_url,
+      r.payment_submitted_at,
+      r.payment_reviewed_at,
       r.house_rules_accepted ? "Yes" : "No",
       r.privacy_accepted ? "Yes" : "No",
       r.consent_at,
