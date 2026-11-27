@@ -3,9 +3,11 @@ import crypto from "crypto";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { badJsonResponse, readJson, validationErrorResponse } from "@/lib/utils/api";
-import { POSTER_MAX_BYTES, POSTER_MIME_TO_EXT } from "@/lib/utils/poster-storage";
-
-export const PAYMENT_SCREENSHOT_BUCKET = "payment-screenshots";
+import {
+  PAYMENT_SCREENSHOT_BUCKET,
+  POSTER_MAX_BYTES,
+  POSTER_MIME_TO_EXT,
+} from "@/lib/utils/poster-storage";
 
 const bodySchema = z.object({
   registrationId: z.string().uuid("Invalid registration ID"),

@@ -122,7 +122,7 @@ export function EventRegistrationModal({
               </Button>
               <Button
                 type="button"
-                variant="danger"
+                variant="destructive"
                 size="md"
                 className="flex-1"
                 onClick={closeAndReset}

@@ -150,7 +150,7 @@ export function PaymentReviewActions({
             <div className="flex gap-2.5 pt-2">
               <Button
                 type="button"
-                variant="danger"
+                variant="destructive"
                 size="md"
                 className="flex-1 gap-1.5"
                 disabled={loadingAction !== null}
