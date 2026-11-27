@@ -22,12 +22,12 @@ export default async function HomePage() {
   return (
     <div className="flex flex-col">
       {/* 1. HERO SECTION / FEATURED EVENT */}
-      <section className="relative overflow-hidden border-b border-border bg-gradient-to-b from-zinc-950 via-zinc-900 to-background py-16 md:py-24">
+      <section className="relative overflow-hidden border-b border-border bg-gradient-to-b from-zinc-950 via-zinc-900 to-background py-14 sm:py-20 lg:py-24">
         <Container>
           {featuredEvent ? (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 xl:gap-16 items-center">
               {/* Left Column: Event Intel */}
-              <div className="lg:col-span-7 space-y-6">
+              <div className="lg:col-span-6 xl:col-span-7 space-y-6">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="danger">OFFICIAL BATTLE CARD</Badge>
                   {featuredEvent.status === "live" ? (
@@ -86,19 +86,31 @@ export default async function HomePage() {
                 </div>
               </div>
 
-              {/* Right Column: Event Poster Visual */}
-              <div className="lg:col-span-5 flex justify-center">
-                <div className="relative aspect-[3/4] w-full max-w-md overflow-hidden rounded-xl border-2 border-border bg-card shadow-2xl">
-                  <PosterImage
-                    src={featuredEvent.poster_url}
-                    alt={featuredEvent.title}
-                    placeholderText="SKYDRA ARENA"
-                    priority
-                    sizes="(max-width: 768px) 100vw, 400px"
+              {/* Right Column: Event Poster Showcase */}
+              <div className="lg:col-span-6 xl:col-span-5 flex justify-center lg:justify-end">
+                <div className="relative w-full max-w-[380px] sm:max-w-[420px] md:max-w-[440px] lg:max-w-[460px] xl:max-w-[480px]">
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute -inset-4 rounded-3xl bg-primary/15 blur-2xl opacity-70"
                   />
-                  <div className="absolute bottom-4 left-4 right-4 rounded bg-black/85 p-3 backdrop-blur border border-white/10 flex justify-between items-center">
-                    <span className="text-xs font-bold text-muted-foreground uppercase">Admission</span>
-                    <span className="text-sm font-black text-white">{formatCurrency(featuredEvent.ticket_price)}</span>
+                  <div className="relative overflow-hidden rounded-2xl border border-white/15 bg-card shadow-[0_25px_60px_-15px_rgba(0,0,0,0.85)] ring-1 ring-white/5">
+                    <PosterImage
+                      src={featuredEvent.poster_url}
+                      alt={featuredEvent.title}
+                      placeholderText="SKYDRA ARENA"
+                      fill={false}
+                      quality={100}
+                      priority
+                      sizes="(max-width: 640px) 92vw, (max-width: 1024px) 440px, 480px"
+                    />
+                    <div className="border-t border-white/10 bg-zinc-950/95 px-4 py-3.5 flex items-center justify-between gap-4">
+                      <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                        Admission
+                      </span>
+                      <span className="text-sm sm:text-base font-black tracking-wide text-white">
+                        {formatCurrency(featuredEvent.ticket_price)}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
