@@ -10,20 +10,36 @@ const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_BYTES = 8 * 1024 * 1024; // 8 MB (also enforced on the server and by the bucket)
 
 export interface PosterUploaderProps {
-  /** Current stored poster URL ("" when none). */
+  /** Current stored image URL ("" when none). */
   value: string;
   onChange: (publicUrl: string) => void;
   /** Lets the parent block "Save" while an upload is running. */
   onUploadingChange?: (uploading: boolean) => void;
+  /** Storage folder inside the posters bucket. */
+  folder?: "events" | "gcash-qr";
+  /** Field label. */
+  label?: string;
+  /** Preview container aspect & width classes. */
+  aspectClassName?: string;
+  /** Placeholder text when no image is set. */
+  placeholderText?: string;
 }
 
 /**
- * Poster picker: choose a file from the device (gallery or camera on phones),
+ * Image picker: choose a file from the device (gallery or camera on phones),
  * instant preview, upload straight to Supabase Storage with a signed upload
  * URL issued by /api/admin/storage/poster-upload-url (never through a Next.js
  * route, because of Vercel's ~4.5 MB body limit).
  */
-export function PosterUploader({ value, onChange, onUploadingChange }: PosterUploaderProps) {
+export function PosterUploader({
+  value,
+  onChange,
+  onUploadingChange,
+  folder = "events",
+  label = "Event Poster",
+  aspectClassName = "aspect-[3/4] w-40",
+  placeholderText = "NO POSTER",
+}: PosterUploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [localPreview, setLocalPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -64,7 +80,7 @@ export function PosterUploader({ value, onChange, onUploadingChange }: PosterUpl
       const res = await fetch("/api/admin/storage/poster-upload-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contentType: file.type, size: file.size }),
+        body: JSON.stringify({ contentType: file.type, size: file.size, folder }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -99,16 +115,16 @@ export function PosterUploader({ value, onChange, onUploadingChange }: PosterUpl
   return (
     <div className="space-y-2">
       <span className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        Event Poster
+        {label}
       </span>
 
       <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative aspect-[3/4] w-40 shrink-0 overflow-hidden rounded-md border border-border bg-input">
+        <div className={`relative ${aspectClassName} shrink-0 overflow-hidden rounded-md border border-border bg-input`}>
           {localPreview ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={localPreview} alt="Selected poster preview" className="h-full w-full object-cover" />
+            <img src={localPreview} alt="Selected image preview" className="h-full w-full object-cover" />
           ) : (
-            <PosterImage src={value} alt="Current poster" placeholderText="NO POSTER" placeholderClassName="text-xs" sizes="160px" />
+            <PosterImage src={value} alt={label} placeholderText={placeholderText} placeholderClassName="text-xs" sizes="160px" />
           )}
           {uploading && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/60">
@@ -120,7 +136,7 @@ export function PosterUploader({ value, onChange, onUploadingChange }: PosterUpl
         <div className="flex flex-col justify-center gap-2">
           <input
             ref={inputRef}
-            id="poster-file"
+            id={`uploader-${folder}`}
             type="file"
             accept="image/jpeg,image/png,image/webp"
             className="sr-only"
@@ -140,7 +156,7 @@ export function PosterUploader({ value, onChange, onUploadingChange }: PosterUpl
               className="gap-2"
             >
               <ImagePlus className="h-4 w-4" />
-              {hasPoster ? "Replace Poster" : "Choose Poster"}
+              {hasPoster ? "Replace Image" : "Choose Image"}
             </Button>
             {hasPoster && (
               <Button type="button" variant="outline" size="md" disabled={uploading} onClick={handleRemove}>

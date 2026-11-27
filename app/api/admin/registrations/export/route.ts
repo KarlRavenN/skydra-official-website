@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { RegistrationService } from "@/services/registrations";
 import { requireAdminApi } from "@/lib/supabase/auth-guard";
 import { isUuid } from "@/lib/utils/api";
-import { AttendeeStatus } from "@/types/database";
+import { AttendeeStatus, PaymentStatus } from "@/types/database";
 
 const STATUSES = ["pending", "confirmed", "checked_in", "cancelled"];
+const PAYMENT_STATUSES = ["free", "pending_verification", "approved", "rejected"];
 
 export async function GET(request: NextRequest) {
   const auth = await requireAdminApi();
@@ -14,12 +15,22 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const eventIdParam = searchParams.get("eventId") || undefined;
     const statusParam = searchParams.get("status") || undefined;
+    const paymentStatusParam = searchParams.get("paymentStatus") || undefined;
     const search = searchParams.get("search") || undefined;
 
     const eventId = eventIdParam && isUuid(eventIdParam) ? eventIdParam : undefined;
     const status = statusParam && STATUSES.includes(statusParam) ? (statusParam as AttendeeStatus) : undefined;
+    const paymentStatus =
+      paymentStatusParam && PAYMENT_STATUSES.includes(paymentStatusParam)
+        ? (paymentStatusParam as PaymentStatus)
+        : undefined;
 
-    const csvContent = await RegistrationService.exportCsvString({ eventId, status, search });
+    const csvContent = await RegistrationService.exportCsvString({
+      eventId,
+      status,
+      paymentStatus,
+      search,
+    });
 
     return new NextResponse(csvContent, {
       status: 200,

@@ -42,6 +42,9 @@ export function EventForm({ event }: EventFormProps) {
     venue_address: event?.venue_address ?? "",
     google_maps_url: event?.google_maps_url ?? "",
     ticket_price: event?.ticket_price ?? 0,
+    gcash_qr_url: event?.gcash_qr_url ?? "",
+    gcash_account_name: event?.gcash_account_name ?? "",
+    gcash_number: event?.gcash_number ?? "",
     capacity: event?.capacity ?? 200,
     status: event?.status ?? "published",
     registration_status: event?.registration_status ?? "open",
@@ -217,6 +220,60 @@ export function EventForm({ event }: EventFormProps) {
               required
               value={formData.capacity}
               onChange={(e) => setFormData({ ...formData, capacity: Number(e.target.value) })}
+            />
+          </div>
+
+          <div className="rounded-lg border border-border bg-secondary/20 p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-white">
+                  GCash Payment Configuration
+                </h3>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Shown to attendees when Ticket Price is greater than ₱0.
+                </p>
+              </div>
+              {Number(formData.ticket_price) > 0 && (
+                <span className="rounded bg-primary/20 px-2 py-0.5 text-[10px] font-bold uppercase text-primary border border-primary/30">
+                  Paid Event Active
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input
+                id="gcash_account_name"
+                label="GCash Account Name"
+                placeholder="e.g. Juan Dela Cruz"
+                value={formData.gcash_account_name}
+                onChange={(e) => setFormData({ ...formData, gcash_account_name: e.target.value })}
+              />
+
+              <Input
+                id="gcash_number"
+                label="GCash Number"
+                type="tel"
+                inputMode="numeric"
+                maxLength={11}
+                placeholder="09171234567"
+                value={formData.gcash_number}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    gcash_number: e.target.value.replace(/\D/g, "").slice(0, 11),
+                  })
+                }
+              />
+            </div>
+
+            <PosterUploader
+              folder="gcash-qr"
+              label="GCash QR Image"
+              aspectClassName="aspect-square w-40"
+              placeholderText="NO QR"
+              value={formData.gcash_qr_url}
+              onChange={(url) => setFormData((prev) => ({ ...prev, gcash_qr_url: url }))}
+              onUploadingChange={setUploading}
             />
           </div>
 
